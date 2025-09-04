@@ -1,59 +1,76 @@
-# OWLv2 物体検出
+# OWLv2 ONNX エクスポートと推論
 
-このプロジェクトは、PyTorchとONNX推論の両方を使用したOWLv2（Open-World Localization）モデルによる物体検出を実装しています。
+OWLv2（Objectness-aware Vision Language Model）をONNX形式にエクスポートし、軽量な依存関係で推論を実行するプロジェクトです。
 
-## 特徴
+## セットアップ
 
-- **PyTorch実装**: transformersライブラリを使用した直接的なモデル推論
-- **ONNX最適化**: より高いパフォーマンスのためのONNXランタイムを使用した最適化推論
-- **ゼロショット物体検出**: 自然言語記述を使用した物体検出
-- **視覚的出力**: バウンディングボックス付きの検出結果を保存
-
-## ファイル
-
-- `owlv2_transformer_detec.py` - PyTorchベースのOWLv2物体検出
-- `owl_onnx_inference.py` - ONNX最適化推論実装
-- `owlv2-onnx/` - ONNXモデルファイルディレクトリ
-- `test.jpg` - サンプル入力画像
-- `test_detected.jpg` - 検出結果付き出力画像
-
-## インストール
-
-uvを使用して依存関係をインストール：
+必要な依存関係をインストール:
 
 ```bash
-uv install
+uv add torch torchvision transformers Pillow requests optimum[onnxruntime] scipy opencv-python
 ```
 
-またはpipを使用：
+## ONNXモデルのエクスポート
+
+optimum-cliを使用してOWLv2モデルをONNX形式にエクスポート:
 
 ```bash
-pip install -r requirements.txt
+uv run optimum-cli export onnx --model google/owlv2-base-patch16-ensemble --task zero-shot-object-detection ./owlv2-onnx/
 ```
 
-## 使用方法
+**重要な注意点:**
+- `zero-shot-object-detection` タスクを使用（`object-detection`ではない）
+- 約614MBのONNXモデルファイルが生成される
+- 精度差に関する警告メッセージは正常で無視して構わない
 
-### PyTorch推論
+**エクスポート出力:**
+- `model.onnx` - メインのONNXモデルファイル
+- `config.json` - モデル設定
+- `tokenizer.json`, `vocab.json` - トークナイザファイル
+- `preprocessor_config.json` - 前処理設定
 
+## 推論実行
+
+### transformersライブラリを使用した推論
 ```bash
-python owlv2_transformer_detec.py
+uv run python owl_onnx_inference.py
 ```
 
-### ONNX推論
+## ファイル構成
 
-```bash
-python owl_onnx_inference.py
+- `owl_onnx_inference.py` - transformersを使用したONNX推論
+- `owlv2_transformer_detec.py` - 元のPyTorch実装
+
+## 使用例
+
+```python
+import onnxruntime as ort
+import numpy as np
+from PIL import Image
+from transformers import AutoTokenizer
+
+# ONNXモデルを読み込み
+session = ort.InferenceSession("./owlv2-onnx/model.onnx")
+
+# 画像とテキストを処理
+image = Image.open("test.jpg")
+texts = ["a photo of a cat", "a photo of a dog", "a photo of a person"]
+
+# 推論実行
+# ... (詳細な実装は owl_onnx_inference.py を参照)
 ```
 
-## 依存関係
+## 結果
 
-- numpy >= 1.21.0
-- opencv-python >= 4.5.0  
-- onnxruntime >= 1.15.0
-- torch >= 2.5.1
-- transformers >= 4.46.3
-- pillow >= 10.4.0
+モデルはテキストクエリに基づいてオブジェクトを検出し、以下を出力:
+- ピクセル座標でのバウンディングボックス
+- 信頼度スコア
+- クラスラベル
+- `test_detected.jpg`として可視化結果を保存
 
-## モデル
+## パフォーマンス情報
 
-オープンボキャブラリ物体検出にGoogleのOWLv2ベースモデル（`google/owlv2-base-patch16-ensemble`）を使用。
+- ONNXモデルはデフォルトでCPUで実行
+- 推論時間: CPUで約30-60秒
+- 高速化にはCUDAによるGPUアクセラレーションを推奨
+- モデルサイズ: 約614MB
